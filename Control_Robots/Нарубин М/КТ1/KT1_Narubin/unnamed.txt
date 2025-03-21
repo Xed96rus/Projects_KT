@@ -1,0 +1,80 @@
+def enc_val():
+    if not hasattr(enc_val, 'counter'):
+        enc_val.counter = 0
+    encoders = [enc_right.getValue() - start[0],
+                enc_back.getValue() - start[1],
+                enc_left.getValue() - start[2] ]
+    if (enc_val.counter == 0):
+        for i in range(3): start[i] = encoders[i]
+        enc_val.counter = 1
+        print('YES')
+    return encoders
+def Inverse_kinematic(X, Y, theta):
+    global X_r
+    global Y_r
+    global Theta
+    V_x = X - X_r
+    V_y = Y - Y_r
+    W = Theta - theta
+    V = np.array([V_x, V_y, W])
+    U = np.dot(J, V)
+    X_r += V_x * dt
+    Y_r += V_y * dt
+    Theta += W * dt
+    if (np.sqrt(V_x**2 + V_y**2) < 0.1 and abs(W) < 0.1):
+        U = [0] * 3
+    
+    print(U)
+    return U
+def go(speed):
+    while(True):
+        enc = enc_val()
+        print(enc)
+        speed_control(speed)
+        if (speed[0] == 0 and speed[1] == 0 and speed[2] == 0):
+             print('GOT IT')
+             break
+        for i in range(3):
+            if (speed[i] == 2 * np.pi * R_WHEELS * enc[i]):
+                speed[i] = speed[i]
+            else:
+                speed[i] = 0
+            print('GO')
+            
+"""T = np.array([[np.cos(theta), -np.sin(theta), x],
+        [np.sin(theta), np.cos(theta), y],
+        [0, 0, 1]])
+    V_x = (R_WHEEL * (V_right * np.cos(np.deg2rad(60))
+                     + V_back * np.cos(np.deg2rad(180))
+                     + V_left * np.cos(np.deg2rad(300)) )) / 3
+    V_y = (R_WHEEL * (V_right * np.sin(np.deg2rad(60))
+                     + V_back * np.sin(np.deg2rad(180))
+                     + V_left * np.sin(np.deg2rad(300)) )) / 3
+    W = (R_WHEEL * (V_right * np.sin(np.deg2rad(60))
+                     + V_back * np.sin(np.deg2rad(180))
+                     + V_left * np.sin(np.deg2rad(300)) )) / (3 * L)"""
+
+#def Forward_kinematic(V_right, V_left, V_back):
+
+
+dt, t = 0.1, 20
+time = 0
+
+    if (time < t):
+        speed = Inverse_kinematic(100, 10, 0)
+        time += dt
+    else:
+        speed = [0] * 3
+    speed_control(speed)
+    #speed = 3 * [MAX_SPEED * 0.1]
+
+def PID(input, setpoint, Kp, Ki, Kd):
+    error = setpoint - input
+    PID.integral = 0  # Накопленная ошибка
+    PID.previous_error = 0  # Предыдущая ошибка для расчета производной
+    PID.integral += error * timestep / 1000.0  # Интешральная составляющая
+    derivative = (error - PID.previous_error) / (timestep / 1000.0)  # дифференциальная составляющая
+    PID.previous_error = error
+    # Вычисление выходного значения PID
+    return Kp * error + Ki * PID.integral + Kd * derivative
+    # Обновление предыдущей ошибки

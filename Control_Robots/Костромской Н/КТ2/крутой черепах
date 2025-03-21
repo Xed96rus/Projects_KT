@@ -1,0 +1,186 @@
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import Twist
+from turtlesim.msg import Pose
+from turtlesim.srv import Spawn
+from math import atan2, sqrt, pi
+
+class TurtleController(Node):
+    def __init__(self):
+        super().__init__('turtle_controller')
+        self.publisher_ = self.create_publisher(Twist, '/turtle1/cmd_vel', 10)
+        self.pose_subscriber = self.create_subscription(Pose, '/turtle1/pose', self.pose_callback, 10)
+        self.timer = self.create_timer(0.1, self.move_turtle)
+
+
+        self.x = 0.0
+        self.y = 0.0
+        self.z = 0.0
+
+        # Celi
+        self.targets = [
+            (2.3, 6.0),  
+            (5.0, 9.0), 
+            (3.0, 3.0)   
+        ]
+        self.current_target_index = 0
+
+        # ugli prepyatstvia
+        self.wall_corners = [
+            (2.0, 5.0), (2.5, 5.0),
+            (2.5, 7.5), (4.0, 7.5),
+            (4.0, 8.0), (2.0, 8.0)
+        ]
+
+        # Skorosti
+        self.linear_speed = 1.0
+        self.angular_speed = 1.0
+        self.max_angular_speed = 0.5
+        self.distance_threshold = 0.1
+        self.angle_tolerance = 0.05
+
+        self.is_avoiding = False
+
+        # Tochka obezda
+        self.avoidance_point = None
+
+        # spavnim cherepah na uglah stenki
+        self.spawn_obstacle_turtles()
+
+    def pose_callback(self, pose):
+        # obnovlenie polozhenia
+        self.x = pose.x
+        self.y = pose.y
+        self.z = pose.theta
+
+    def distance_to_target(self, target_x, target_y):
+        return sqrt((target_x - self.x) ** 2 + (target_y - self.y) ** 2)
+
+    def angle_to_target(self, target_x, target_y):
+        return atan2(target_y - self.y, target_x - self.x)
+
+    def is_point_inside_wall(self, x, y):
+        inside = False
+        n = len(self.wall_corners)
+        for i in range(n):
+            x1, y1 = self.wall_corners[i]
+            x2, y2 = self.wall_corners[(i + 1) % n]
+            if y > min(y1, y2) and y <= max(y1, y2) and x <= max(x1, x2):
+                xinters = (y - y1) * (x2 - x1) / (y2 - y1) + x1 if y1 != y2 else x1
+                if x <= xinters:
+                    inside = not inside
+        return inside
+
+    def is_wall_in_path(self, target_x, target_y):
+        for i in range(len(self.wall_corners)):
+            x1, y1 = self.wall_corners[i]
+            x2, y2 = self.wall_corners[(i + 1) % len(self.wall_corners)]
+            wall_vector = (x2 - x1, y2 - y1)
+            turtle_vector = (target_x - self.x, target_y - self.y)
+            cross_product = wall_vector[0] * turtle_vector[1] - wall_vector[1] * turtle_vector[0]
+            if abs(cross_product) < 1e-6:
+                continue
+            t = ((self.x - x1) * turtle_vector[1] - (self.y - y1) * turtle_vector[0]) / cross_product
+            u = ((self.x - x1) * wall_vector[1] - (self.y - y1) * wall_vector[0]) / cross_product
+            if 0 <= t <= 1 and 0 <= u <= 1:
+                return True
+        return False
+
+    def spawn_obstacle_turtles(self):
+        for i, corner in enumerate(self.wall_corners):
+            x, y = corner
+            name = f"obstacle_{i}"
+            client = self.create_client(Spawn, 'spawn')
+            while not client.wait_for_service(timeout_sec=1.0):
+                print("Ozhidanie servisa 'spawn'...")
+
+            request = Spawn.Request()
+            request.x = x
+            request.y = y
+            request.theta = 0.0
+            request.name = name
+
+            future = client.call_async(request)
+            future.add_done_callback(lambda future: print(f"Cherpakha {name} sozdan na ({x}, {y})"))
+
+    def move_to_target(self, target_x, target_y):
+        twist_msg = Twist()
+        
+        target_angle = self.angle_to_target(target_x, target_y)
+        angle_diff = target_angle - self.z
+        angle_diff = (angle_diff + pi) % (2 * pi) - pi
+
+        # ogranichenie eglovoi skorosti
+        if abs(angle_diff) > self.angle_tolerance:
+            angular_speed = self.angular_speed if angle_diff > 0 else -self.angular_speed
+            twist_msg.angular.z = max(min(angular_speed, self.max_angular_speed), -self.max_angular_speed)
+        else:
+            twist_msg.angular.z = 0.0
+
+        # edem vpered esli norm ugol poschital
+        if abs(angle_diff) <= self.angle_tolerance and \
+           self.distance_to_target(target_x, target_y) > self.distance_threshold:
+            twist_msg.linear.x = self.linear_speed
+        else:
+            twist_msg.linear.x = 0.0
+
+        self.publisher_.publish(twist_msg)
+
+    def get_avoidance_point(self, target_x, target_y):
+        # nahodim blizhaishi ugol prepyatstvia
+        closest_corner = min(self.wall_corners, key=lambda corner: self.distance_to_target(corner[0], corner[1]))
+        
+       
+        if closest_corner == (2.5, 5.0):  # Левый нижний угол
+            return (target_x - 1.0, target_y - 1.0)  # obezd sleva
+        elif closest_corner == (4.0, 8.0):  # Правый верхний угол
+            return (target_x + 1.0, target_y + 1.0)  # obezd sprava
+        else:
+            #  esli ne poluchaetsa poschitat to po defoltu sprava
+            return (target_x + 1.0, target_y + 1.0)
+
+    def move_turtle(self):
+        if self.current_target_index >= len(self.targets):
+            print("Marshrut zavershen.")
+            return
+
+        target_x, target_y = self.targets[self.current_target_index]
+
+        if self.is_point_inside_wall(target_x, target_y):
+            print(f"Tochka ({target_x}, {target_y}) nakhoditsya vnutri prepyatstviya. Propuskayu.")
+            self.current_target_index += 1
+            return
+
+        if self.is_wall_in_path(target_x, target_y):
+            if not self.is_avoiding:
+                print(f"Prepyatstvie na puti k tochke ({target_x}, {target_y}). Ob"ezzhayu...")
+                self.avoidance_point = self.get_avoidance_point(target_x, target_y)
+                # Proverka chto obezd ne vnutri stenki
+                while self.is_point_inside_wall(self.avoidance_point[0], self.avoidance_point[1]):
+                    self.avoidance_point = (self.avoidance_point[0] + 0.5, self.avoidance_point[1] + 0.5)
+                self.is_avoiding = True
+
+            # Idem k tochke obezda
+            if self.distance_to_target(self.avoidance_point[0], self.avoidance_point[1]) > self.distance_threshold:
+                self.move_to_target(self.avoidance_point[0], self.avoidance_point[1])
+            else:
+                # Prodolzhaem dvixhenie
+                self.is_avoiding = False
+                self.avoidance_point = None
+            return
+
+        print(f"Dvizhus k tochke: ({target_x}, {target_y})")
+        if self.distance_to_target(target_x, target_y) > self.distance_threshold:
+            self.move_to_target(target_x, target_y)
+        else:
+            print(f"Tochka dostignuta: ({target_x}, {target_y})")
+            self.current_target_index += 1
+
+def main():
+    rclpy.init()
+    node = TurtleController()
+    rclpy.spin(node)
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,26 @@
+#VRML_SIM R2023b utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/floors/protos/RectangleArena.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/robots/festo/robotino3/protos/Robotino3.proto"
+
+WorldInfo {
+}
+Viewpoint {
+  orientation -0.5890966353382473 0.587250416936043 0.5550694569525508 2.1212661103264145
+  position -0.02981836768280395 0.14594696105927552 2.142867120519506
+}
+TexturedBackground {
+}
+TexturedBackgroundLight {
+}
+RectangleArena {
+  floorSize 5 5
+  floorTileSize 1 1
+}
+Robotino3 {
+  translation -5.35105e-06 -0.0029109 -0.00248399
+  rotation -0.0002699968341484039 0.0002698469651277929 0.9999999271421598 1.5708095014649837
+  controller "KT1"
+}
